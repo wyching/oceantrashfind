@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teachable Machine 影像模型</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- 全局樣式 --- */
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --background-color: #f4f6f8;
+            --card-background: #ffffff;
+            --text-color: #333;
+            --border-color: #e0e0e0;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --top-prediction-bg: #e6f7ff;
+            --top-prediction-border: #91d5ff;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* --- 主容器卡片 --- */
+        .app-container {
+            background-color: var(--card-background);
+            border-radius: 16px;
+            box-shadow: 0 8px 30px var(--shadow-color);
+            padding: 30px 40px;
+            width: 100%;
+            max-width: 800px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.2em;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        header p {
+            color: var(--secondary-color);
+            margin-bottom: 30px;
+        }
+        
+        /* --- 主內容區域 (攝影機 + 預測結果) --- */
+        .main-content {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-start;
+            gap: 40px;
+        }
+
+        /* --- 攝影機區域 --- */
+        .webcam-wrapper {
+            flex: 1;
+            position: relative;
+            min-width: 300px;
+            height: 300px;
+            background-color: #eee;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; /* 確保 canvas 不會超出圓角 */
+        }
+        
+        #webcam-container canvas {
+            border-radius: 12px;
+        }
+
+        #loading-message {
+            color: var(--secondary-color);
+            font-size: 1.1em;
+            position: absolute;
+        }
+
+        /* --- 預測結果區域 --- */
+        .results-wrapper {
+            flex: 1;
+            min-width: 300px;
+            text-align: left;
+        }
+
+        .results-wrapper h2 {
+            margin-top: 0;
+            color: var(--text-color);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        #label-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .prediction-item {
+            display: flex;
+            flex-direction: column;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: #fafafa;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .prediction-item.top-prediction {
+            background-color: var(--top-prediction-bg);
+            border-color: var(--top-prediction-border);
+            transform: scale(1.02);
+        }
+
+        .prediction-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .class-name {
+            font-weight: 500;
+        }
+
+        .probability {
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 12px;
+            background-color: var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background-color: var(--primary-color);
+            border-radius: 6px;
+            transition: width 0.3s ease-in-out;
+        }
+
+        /* --- 按鈕 --- */
+        #start-button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 25px;
+            font-size: 1.1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.2s;
+            margin-bottom: 20px;
+        }
+        
+        #start-button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+        
+        #start-button:disabled {
+            background-color: var(--secondary-color);
+            cursor: not-allowed;
+        }
+
+        /* --- 響應式設計: 當螢幕寬度小於 768px --- */
+        @media (max-width: 768px) {
+            .app-container {
+                padding: 20px;
+            }
+            .main-content {
+                flex-direction: column;
+                align-items: center;
+            }
+            .webcam-wrapper, .results-wrapper {
+                width: 100%;
+                max-width: 300px; /* 限制最大寬度以保持比例 */
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <header>
+            <h1>AI 影像分類器</h1>
+            <p>使用 Teachable Machine 訓練的模型，即時辨識攝影機影像</p>
+        </header>
+
+        <button type="button" id="start-button" onclick="init()">🚀 啟動攝影機</button>
+
+        <div class="main-content">
+            <div class="webcam-wrapper">
+                <div id="loading-message">正在等待攝影機啟動...</div>
+                <div id="webcam-container"></div>
+            </div>
+            <div class="results-wrapper">
+                <h2>預測結果</h2>
+                <div id="label-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script type="text/javascript">
+        // 您的模型連結 - 這個路徑會讀取同層的 my_model 資料夾
+        const URL = "./my_model/";
+
+        let model, webcam, labelContainer, maxPredictions;
+        const startButton = document.getElementById("start-button");
+        const loadingMessage = document.getElementById("loading-message");
+
+        // 載入模型並設定攝影機
+        async function init() {
+            startButton.disabled = true;
+            startButton.innerText = "模型載入中...";
+            loadingMessage.style.display = 'block';
+
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            const flip = true;
+            webcam = new tmImage.Webcam(300, 300, flip);
+            await webcam.setup();
+            await webcam.play();
+            
+            // 隱藏啟動按鈕和載入訊息
+            startButton.style.display = 'none';
+            loadingMessage.style.display = 'none';
+            
+            // 將攝影機畫面附加到 DOM
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            
+            // 為每個類別建立結果顯示區塊
+            labelContainer = document.getElementById("label-container");
+            for (let i = 0; i < maxPredictions; i++) {
+                const item = document.createElement("div");
+                item.classList.add("prediction-item");
+                item.innerHTML = `
+                    <div class="prediction-info">
+                        <span class="class-name"></span>
+                        <span class="probability"></span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill"></div>
+                    </div>
+                `;
+                labelContainer.appendChild(item);
+            }
+
+            window.requestAnimationFrame(loop);
+        }
+
+        async function loop() {
+            webcam.update();
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        // 執行預測並更新 UI
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            let topPredictionIndex = 0;
+
+            for (let i = 0; i < maxPredictions; i++) {
+                // 找到最高機率的預測
+                if (prediction[i].probability > prediction[topPredictionIndex].probability) {
+                    topPredictionIndex = i;
+                }
+
+                const probabilityPercent = (prediction[i].probability * 100).toFixed(0) + "%";
+                const item = labelContainer.childNodes[i];
+                
+                // 更新 UI 元素
+                item.querySelector(".class-name").innerText = prediction[i].className;
+                item.querySelector(".probability").innerText = probabilityPercent;
+                item.querySelector(".progress-bar-fill").style.width = probabilityPercent;
+            }
+
+            // 更新最高預測項目的樣式
+            for (let i = 0; i < maxPredictions; i++) {
+                const item = labelContainer.childNodes[i];
+                if (i === topPredictionIndex) {
+                    item.classList.add("top-prediction");
+                } else {
+                    item.classList.remove("top-prediction");
+                }
+            }
+        }
+    </script>
+
+</body>
+</html>
